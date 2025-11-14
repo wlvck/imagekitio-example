@@ -1,0 +1,88 @@
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from contextlib import asynccontextmanager
+from src.db import create_db_and_tables, get_session, PostModel
+from imagekitio.models.UploadFileRequestOptions import UploadFileRequestOptions
+from src.images import imagekit
+import uuid
+import shutil
+import os
+import tempfile
+
+@asynccontextmanager
+async def lifespan(instance: FastAPI):
+    await create_db_and_tables()
+    yield
+
+
+instance = FastAPI(lifespan=lifespan)
+
+
+@instance.post("/post")
+async def create_post(
+    file: UploadFile = File(...),
+    caption: str = Form(...),
+    session: AsyncSession = Depends(get_session)
+):
+    temp_file_path = None
+
+    try: 
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+            temp_file_path = temp_file.name
+
+        upload_options = UploadFileRequestOptions(
+            use_unique_file_name=True,
+            tags=["post_image"]
+        )
+
+        upload_result = imagekit.upload_file(
+            file=open(temp_file_path, "rb"),
+            file_name=file.filename,
+            options=upload_options
+        )
+
+        if upload_result.response_metadata.http_status_code != 200:
+            raise HTTPException(status_code=500, detail="Image upload failed")
+        
+        post = PostModel(
+            caption=caption,
+            url=upload_result.url,
+            file_type="video" if file.content_type.startswith("video/") else "image",
+            file_name=upload_result.name
+        )
+        session.add(post)
+
+        await session.commit()
+        await session.refresh(post)
+        return post
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+        file.file.close()
+
+
+@instance.get("/posts")
+async def get_posts(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(
+        select(PostModel).order_by(PostModel.created_at.desc())
+    )
+
+    posts = [row[0] for row in result.all()]
+
+    posts_data = []
+
+    for post in posts:
+        posts_data.append({
+            "id": str(post.id),
+            "caption": post.caption,
+            "url": post.url,
+            "file_type": post.file_type,
+            "file_name": post.file_name,
+            "created_at": post.created_at.isoformat()
+        })
+
+    return posts_data
