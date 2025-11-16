@@ -7,9 +7,12 @@ from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy import Column, String, DateTime, ForeignKey, Text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from fastapi_users.db import SQLAlchemyUserDatabase, SQLAlchemyBaseUserTableUUID
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 
-DATABASE_URL = "sqlite+aiosqlite:///./database.db"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 class DeclarativeBase(DeclarativeBase):

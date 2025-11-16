@@ -5,9 +5,13 @@ from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, models
 from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
 from fastapi_users.db import SQLAlchemyUserDatabase
 from src.db import get_user_db, User
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 
-SECRET = "SECRET_KEY_CHANGE_ME"
+SECRET = os.getenv("SECRET_KEY", "SECRET")
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     reset_password_token_secret = SECRET
