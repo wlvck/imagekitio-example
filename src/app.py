@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
-from src.db import create_db_and_tables, get_session, PostModel
+from src.db import create_db_and_tables, get_session, PostModel, User
 from imagekitio.models.UploadFileRequestOptions import UploadFileRequestOptions
 from src.users import current_active_user, fastapi_users, auth_backend
 from src.images import imagekit
@@ -51,6 +51,7 @@ instance.include_router(
 async def create_post(
     file: UploadFile = File(...),
     caption: str = Form(...),
+    user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_session)
 ):
     temp_file_path = None
@@ -76,6 +77,7 @@ async def create_post(
         
         post = PostModel(
             caption=caption,
+            user_id=user.id,
             url=upload_result.url,
             file_type="video" if file.content_type.startswith("video/") else "image",
             file_name=upload_result.name
@@ -94,30 +96,38 @@ async def create_post(
 
 
 @instance.get("/posts")
-async def get_posts(session: AsyncSession = Depends(get_session)):
+async def get_posts(session: AsyncSession = Depends(get_session), user: User = Depends(current_active_user),):
     result = await session.execute(
         select(PostModel).order_by(PostModel.created_at.desc())
     )
 
     posts = [row[0] for row in result.all()]
+    
+    result = await session.execute(
+        select(User).where(User.id == user.id)
+    )
+    user_email = result.scalar_one().email
 
     posts_data = [] 
 
     for post in posts:
         posts_data.append({
             "id": str(post.id),
+            "user_id": user.id,
             "caption": post.caption,
             "url": post.url,
             "file_type": post.file_type,
             "file_name": post.file_name,
-            "created_at": post.created_at.isoformat()
+            "created_at": post.created_at.isoformat(),
+            "is_owner": post.user_id == user.id,
+            "user_email": user_email
         })
 
     return posts_data
 
 
 @instance.delete("/post/{post_id}")
-async def delete_post(post_id: str, session: AsyncSession = Depends(get_session)):
+async def delete_post(post_id: str, session: AsyncSession = Depends(get_session), user: User = Depends(current_active_user),):
    
     try:
         post_uuid = uuid.UUID(post_id)
@@ -129,6 +139,10 @@ async def delete_post(post_id: str, session: AsyncSession = Depends(get_session)
         if not post:
             raise HTTPException(status_code=404, detail="Post not found")
         
+
+        if post.user_id != user.id:
+            raise HTTPException(status_code=403, detail="You do not have permission to delete this post")
+
         await session.delete(post)
         await session.commit()
 
