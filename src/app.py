@@ -73,7 +73,7 @@ async def get_posts(session: AsyncSession = Depends(get_session)):
 
     posts = [row[0] for row in result.all()]
 
-    posts_data = []
+    posts_data = [] 
 
     for post in posts:
         posts_data.append({
@@ -86,3 +86,28 @@ async def get_posts(session: AsyncSession = Depends(get_session)):
         })
 
     return posts_data
+
+
+@instance.delete("/post/{post_id}")
+async def delete_post(post_id: str, session: AsyncSession = Depends(get_session)):
+   
+    try:
+        post_uuid = uuid.UUID(post_id)
+        result = await session.execute(
+            select(PostModel).where(PostModel.id == post_uuid)
+        )
+        post = result.scalar_one_or_none()
+
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found")
+        
+        await session.delete(post)
+        await session.commit()
+
+        return {"detail": "Post deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete post: {str(e)}")
+        
+
+
+    
