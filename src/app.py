@@ -4,7 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
 from src.db import create_db_and_tables, get_session, PostModel
 from imagekitio.models.UploadFileRequestOptions import UploadFileRequestOptions
+from src.users import current_active_user, fastapi_users, auth_backend
 from src.images import imagekit
+from src.schemas import UserRead, UserUpdate, UserCreate
 import uuid
 import shutil
 import os
@@ -17,6 +19,32 @@ async def lifespan(instance: FastAPI):
 
 
 instance = FastAPI(lifespan=lifespan)
+
+instance.include_router(
+    fastapi_users.get_auth_router(auth_backend),
+    prefix="/auth/jwt",
+    tags=["auth"],
+)
+instance.include_router(
+    fastapi_users.get_register_router(UserRead, UserCreate),
+    prefix="/auth",
+    tags=["auth"],
+)
+instance.include_router(
+    fastapi_users.get_reset_password_router(),
+    prefix="/auth",
+    tags=["auth"],
+)
+instance.include_router(
+    fastapi_users.get_verify_router(UserRead),
+    prefix="/auth",
+    tags=["auth"],
+)
+instance.include_router(
+    fastapi_users.get_users_router(UserRead, UserUpdate),
+    prefix="/users",
+    tags=["users"],
+)
 
 
 @instance.post("/post")
